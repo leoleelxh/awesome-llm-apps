@@ -62,23 +62,6 @@ def display_score(score: float, category: str, sub_scores: dict = None, raw_scor
     if raw_score is not None:
         score_info += f" (原始评分: {round(raw_score, 1)})"
     
-    # 生成细项评分的HTML
-    sub_scores_html = ""
-    if sub_scores:
-        sub_scores_list = []
-        for k, v in sub_scores.items():
-            score_html = f'<div class="score-item">{k}: <span style="color: {color}; font-weight: bold;">{round(v, 1)}/10</span></div>'
-            sub_scores_list.append(score_html)
-        
-        sub_scores_html = f"""
-            <div style="margin-top: 20px; text-align: center;">
-                <div style="font-size: 20px; margin-bottom: 15px; font-weight: bold;">细项评分</div>
-                <div style="display: flex; flex-direction: column; gap: 10px; align-items: center;">
-                    {''.join(sub_scores_list)}
-                </div>
-            </div>
-        """
-    
     # 主评分区域
     st.markdown(f"""
         <div style="background-color: #f0f2f6; padding: 20px; border-radius: 10px; margin-bottom: 20px;">
@@ -91,9 +74,24 @@ def display_score(score: float, category: str, sub_scores: dict = None, raw_scor
             <div style="text-align: center; font-size: 24px; margin: 20px 0;">
                 {feedback}
             </div>
-            {sub_scores_html}
         </div>
     """, unsafe_allow_html=True)
+
+    # 如果有细项评分，使用 columns 布局显示
+    if sub_scores:
+        st.markdown("<div style='text-align: center; font-size: 20px; font-weight: bold; margin: 20px 0;'>细项评分</div>", unsafe_allow_html=True)
+        
+        # 使用 columns 来布局细项评分
+        cols = st.columns(len(sub_scores))
+        for col, (name, sub_score) in zip(cols, sub_scores.items()):
+            with col:
+                st.markdown(f"""
+                    <div style="background-color: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); text-align: center;">
+                        <div style="font-size: 16px; color: #666; margin-bottom: 8px;">{name}</div>
+                        <div style="font-size: 28px; color: {color}; font-weight: bold;">{round(sub_score, 1)}</div>
+                        <div style="font-size: 14px; color: #666;">/ 10</div>
+                    </div>
+                """, unsafe_allow_html=True)
 
 def process_images(files):
     """处理上传的图片文件"""
@@ -261,7 +259,7 @@ def adjust_score_strictness(score: float, strictness: str) -> float:
 def get_prompts(specific_elements, context, strictness="正常"):
     """获取分析提示语"""
     strictness_guide = {
-        "宽��": "在评分时更多关注设计的潜力和积极方面，对缺陷保持包容态度。",
+        "宽松": "在评分时更多关注设计的潜力和积极方面，对缺陷保持包容态度。",
         "正常": "保持平衡的评分标准，同时考虑优点和不足。",
         "严格": "采用更严格的评分标准，重点关注需要改进的地方。"
     }
@@ -428,7 +426,7 @@ def main():
             
             with col1:
                 design_files = st.file_uploader(
-                    "上传 UI/UX 设计图",
+                    "上传 UI/UX 设计��",
                     type=["jpg", "jpeg", "png"],
                     accept_multiple_files=True,
                     key="designs",
