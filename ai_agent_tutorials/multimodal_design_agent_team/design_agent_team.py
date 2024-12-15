@@ -12,8 +12,34 @@ import tempfile
 # 加载环境变量
 load_dotenv()
 
-def display_score(score: float, category: str):
+# 在文件最开始，导入语句后添加
+st.set_page_config(
+    page_title="多模态 AI 设计助手团队",
+    layout="wide",
+    initial_sidebar_state="collapsed"  # 默认折叠侧边栏
+)
+
+# 添加自定义 CSS 来隐藏侧边栏（当有API key时）
+def hide_sidebar():
+    st.markdown("""
+    <style>
+        [data-testid="stSidebar"][aria-expanded="false"] {
+            display: none;
+        }
+        [data-testid="stSidebar"][aria-expanded="true"] > div:first-child {
+            width: 300px;
+        }
+        [data-testid="stSidebarNav"] {
+            display: none;
+        }
+    </style>
+    """, unsafe_allow_html=True)
+
+def display_score(score: float, category: str, sub_scores: dict = None):
     """显示评分结果"""
+    # 精简到小数点后一位
+    score = round(score, 1)
+    
     # 根据分数选择评价文案和表情
     if score >= 8.5:
         feedback = "非常棒的设计！ 🌟"
@@ -31,18 +57,35 @@ def display_score(score: float, category: str):
         feedback = "好好修改，也许你可以的 💡"
         color = "#D32F2F"  # 红色
 
-    # 使用HTML和CSS来美化显示
+    # 主评分区域
     st.markdown(f"""
-        <div style='background-color: #f0f2f6; padding: 20px; border-radius: 10px; margin-bottom: 20px;'>
-            <h3 style='text-align: center; color: {color}; margin-bottom: 10px;'>{category}评分</h3>
-            <div style='font-size: 48px; text-align: center; color: {color}; font-weight: bold;'>
+        <div style="background-color: #f0f2f6; padding: 20px; border-radius: 10px; margin-bottom: 20px;">
+            <div style="text-align: center; color: {color}; margin-bottom: 10px; font-size: 24px; font-weight: bold;">
+                {category}评分
+            </div>
+            <div style="font-size: 72px; text-align: center; color: {color}; font-weight: bold; margin: 20px 0;">
                 {score}/10
             </div>
-            <div style='text-align: center; font-size: 24px; margin-top: 10px;'>
+            <div style="text-align: center; font-size: 24px; margin: 20px 0;">
                 {feedback}
             </div>
         </div>
     """, unsafe_allow_html=True)
+
+    # 如果有细项评分，单独显示
+    if sub_scores:
+        st.markdown("<div style='text-align: center; font-size: 20px; font-weight: bold; margin: 20px 0;'>细项评分</div>", unsafe_allow_html=True)
+        
+        # 使用 columns 来布局细项评分
+        cols = st.columns(len(sub_scores))
+        for col, (name, sub_score) in zip(cols, sub_scores.items()):
+            with col:
+                st.markdown(f"""
+                    <div style="background-color: white; padding: 10px; border-radius: 5px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); text-align: center;">
+                        <div style="font-size: 16px; margin-bottom: 5px;">{name}</div>
+                        <div style="font-size: 24px; color: {color}; font-weight: bold;">{round(sub_score, 1)}/10</div>
+                    </div>
+                """, unsafe_allow_html=True)
 
 def process_images(files):
     """处理上传的图片文件"""
@@ -62,8 +105,8 @@ def process_images(files):
             continue
     return processed_images
 
-def analyze_content(agent, prompt, images, analysis_type):
-    """分析内容并显示结果"""
+def analyze_content(agent, prompt, images, analysis_type, show_result=True):
+    """分析内容并返回结果"""
     try:
         response = agent.run(message=prompt, images=images)
         content = response.content
@@ -79,23 +122,40 @@ def analyze_content(agent, prompt, images, analysis_type):
         # 提取详细分析
         details = content.split('DETAILS:')[-1].strip()
         
-        # 显示结果
-        display_score(score, analysis_type)
+        if show_result:
+            # 显示总结
+            st.markdown("### 总结与建议")
+            st.markdown(summary)
+            
+            # 显示详细分析
+            st.markdown("### 详细分析")
+            st.markdown(details)
         
-        # 显示总结
-        st.markdown("### 总结与建议")
-        st.markdown(summary)
-        
-        # 显示详细分析
-        st.markdown("### 详细分析")
-        st.markdown(details)
-        
-        return score
+        return {
+            'score': score,
+            'summary': summary,
+            'details': details
+        }
         
     except Exception as e:
         st.error(f"分析过程中出现错误: {str(e)}")
         st.markdown(content)
-        return 5.0
+        return {
+            'score': 5.0,
+            'summary': "分析过程出现错误",
+            'details': str(e)
+        }
+
+def show_analysis_details(results):
+    """显示分析详细结果"""
+    if results:
+        # 显示总结
+        st.markdown("### 总结与建议")
+        st.markdown(results['summary'])
+        
+        # 显示详细分析
+        st.markdown("### 详细分析")
+        st.markdown(results['details'])
 
 def initialize_agents(api_key: str) -> tuple[Agent, Agent, Agent]:
     """初始化 AI 代理"""
@@ -224,34 +284,44 @@ def get_prompts(specific_elements, context):
     return vision_prompt, ux_prompt, market_prompt
 
 def main():
+    # 检查是否已有 API key
+    has_api_key = os.getenv("GEMINI_API_KEY") or ("api_key_input" in st.session_state and st.session_state.api_key_input)
+    
+    if has_api_key:
+        hide_sidebar()  # 如果有 API key，隐藏侧边栏
+    
     st.title("多模态 AI 设计助手团队")
     
     # Sidebar - API 配置
     with st.sidebar:
-        st.header("🔑 API 配置")
-
-        if "api_key_input" not in st.session_state:
-            st.session_state.api_key_input = os.getenv("GEMINI_API_KEY", "")
-            
-        api_key = st.text_input(
-            "输入您的 Gemini API 密钥",
-            value=st.session_state.api_key_input,
-            type="password",
-            help="从 Google AI Studio 获取您的 API 密钥，或在 .env 文件中设置 GEMINI_API_KEY",
-            key="api_key_widget"  
-        )
-
-        if api_key != st.session_state.api_key_input:
-            st.session_state.api_key_input = api_key
-        
-        if api_key:
-            st.success("API 密钥已提供! ✅")
+        if has_api_key:
+            expander = st.expander("🔑 API 配置", expanded=False)
         else:
-            st.warning("请输入您的 API 密钥以继续")
-            st.markdown("""
-            获取 API 密钥:
-            1. 访问 [Google AI Studio](https://makersuite.google.com/app/apikey)
-            """)
+            expander = st.expander("🔑 API 配置", expanded=True)
+
+        with expander:
+            if "api_key_input" not in st.session_state:
+                st.session_state.api_key_input = os.getenv("GEMINI_API_KEY", "")
+                
+            api_key = st.text_input(
+                "输入您的 Gemini API 密钥",
+                value=st.session_state.api_key_input,
+                type="password",
+                help="从 Google AI Studio 获取您的 API 密钥，或在 .env 文件中设置 GEMINI_API_KEY",
+                key="api_key_widget"  
+            )
+
+            if api_key != st.session_state.api_key_input:
+                st.session_state.api_key_input = api_key
+            
+            if api_key:
+                st.success("API 密钥已提供! ✅")
+            else:
+                st.warning("请输入您的 API 密钥以继续")
+                st.markdown("""
+                获取 API 密钥:
+                1. 访问 [Google AI Studio](https://makersuite.google.com/app/apikey)
+                """)
 
     # 主界面逻辑
     if st.session_state.api_key_input:
@@ -346,34 +416,52 @@ def main():
                         
                         # 执行分析
                         scores = {}
+                        analysis_results = {}
                         
+                        # 先执行所有分析并收集分数和结果
+                        if "视觉设计" in analysis_types:
+                            with st.spinner("正在分析视觉设计..."):
+                                results = analyze_content(
+                                    vision_agent, vision_prompt, all_images, "视觉设计", show_result=False
+                                )
+                                scores['视觉设计'] = results['score']
+                                analysis_results['视觉设计'] = results
+                        
+                        if "用户体验" in analysis_types:
+                            with st.spinner("正在分析用户体验..."):
+                                results = analyze_content(
+                                    ux_agent, ux_prompt, all_images, "用户体验", show_result=False
+                                )
+                                scores['用户体验'] = results['score']
+                                analysis_results['用户体验'] = results
+                        
+                        if "市场分析" in analysis_types:
+                            with st.spinner("正在进行市场分析..."):
+                                results = analyze_content(
+                                    market_agent, market_prompt, all_images, "市场竞争力", show_result=False
+                                )
+                                scores['市场分析'] = results['score']
+                                analysis_results['市场分析'] = results
+                        
+                        # 首先显示综合评分
+                        if scores:
+                            avg_score = sum(scores.values()) / len(scores)
+                            st.subheader("🎯 综合评估")
+                            display_score(avg_score, "综合", sub_scores=scores)
+                        
+                        # 然后显示详细分析结果
                         if "视觉设计" in analysis_types:
                             st.subheader("🎨 视觉设计分析")
-                            with st.spinner("正在分析视觉设计..."):
-                                scores['视觉设计'] = analyze_content(
-                                    vision_agent, vision_prompt, all_images, "视觉设计"
-                                )
+                            show_analysis_details(analysis_results['视觉设计'])
                         
                         if "用户体验" in analysis_types:
                             st.subheader("🔄 用户体验分析")
-                            with st.spinner("正在分析用户体验..."):
-                                scores['用户体验'] = analyze_content(
-                                    ux_agent, ux_prompt, all_images, "用户体验"
-                                )
+                            show_analysis_details(analysis_results['用户体验'])
                         
                         if "市场分析" in analysis_types:
                             st.subheader("📊 市场分析")
-                            with st.spinner("正在进行市场分析..."):
-                                scores['市场分析'] = analyze_content(
-                                    market_agent, market_prompt, all_images, "市场竞争力"
-                                )
+                            show_analysis_details(analysis_results['市场分析'])
                         
-                        # 显示综合评分
-                        if len(scores) > 1:
-                            st.subheader("🎯 综合评估")
-                            avg_score = sum(scores.values()) / len(scores)
-                            display_score(avg_score, "综合")
-                            
                     except Exception as e:
                         st.error(f"分析过程中出现错误: {str(e)}")
                 else:

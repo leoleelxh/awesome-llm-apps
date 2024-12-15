@@ -1,27 +1,37 @@
-# Multimodal AI Design Agent Team
+# 多模态 AI 设计助手团队
 
-A Streamlit application that provides comprehensive design analysis using a team of specialized AI agents powered by Google's Gemini model. 
+一个基于 Gemini API 的多模态设计分析工具，能够对UI/UX设计进行全方位的智能评估。
 
-This application leverages multiple specialized AI agents to provide comprehensive analysis of UI/UX designs of your product and your competitors, combining visual understanding, user experience evaluation, and market research insights.
+## ✨ 主要特性
 
-## Features
+### 🎯 多维度分析
+- **视觉设计分析**：评估设计元素、色彩方案、排版和视觉层次
+- **用户体验分析**：分析用户流程、交互模式和可用性
+- **市场竞争分析**：评估市场定位和竞争优势
 
-- **Specialized Legal AI Agent Team**
+### 🔍 智能评分系统
+- 10分制综合评分
+- 细分领域独立评分
+- 可视化评分展示
+- 详细的分析报告和建议
 
-   - 🎨 **Visual Design Agent**: Evaluates design elements, patterns, color schemes, typography, and visual hierarchy
-   - 🔄 **UX Analysis Agent**: Assesses user flows, interaction patterns, usability, and accessibility
-   - 📊 **Market Analysis Agent**: Provides market insights, competitor analysis, and positioning recommendations
-   
-- **Multiple Analysis Types**: Choose from Visual Design, UX, and Market Analysis
-- **Comparative Analysis**: Upload competitor designs for comparative insights
-- **Customizable Focus Areas**: Select specific aspects for detailed analysis
-- **Context-Aware**: Provide additional context for more relevant insights
-- **Real-time Processing**: Get instant analysis with progress indicators
-- **Structured Output**: Receive well-organized, actionable insights
+### 💡 使用特点
+- 支持多图片上传分析
+- 支持竞品设计对比
+- 自定义分析维度
+- 中文友好界面
+- 详细的使用建议
 
-## How to Run
+### ⚙️ 技术特性
+- 基于 Streamlit 的响应式界面
+- 环境变量配置（.env）支持
+- API 密钥安全存储
+- 智能边栏管理（配置后自动隐藏）
+- 异常处理和用户提示
 
-1. **Setup Environment**
+## 🚀 快速开始
+
+1. 配置环境
    ```bash
    # Clone the repository
    git clone https://github.com/Shubhamsaboo/awesome-llm-apps.git
