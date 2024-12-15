@@ -35,7 +35,7 @@ def hide_sidebar():
     </style>
     """, unsafe_allow_html=True)
 
-def display_score(score: float, category: str, sub_scores: dict = None):
+def display_score(score: float, category: str, sub_scores: dict = None, raw_score: float = None):
     """显示评分结果"""
     # 精简到小数点后一位
     score = round(score, 1)
@@ -57,6 +57,28 @@ def display_score(score: float, category: str, sub_scores: dict = None):
         feedback = "好好修改，也许你可以的 💡"
         color = "#D32F2F"  # 红色
 
+    # 如果有原始分数，显示参考信息
+    score_info = f"{score}/10"
+    if raw_score is not None:
+        score_info += f" (原始评分: {round(raw_score, 1)})"
+    
+    # 生成细项评分的HTML
+    sub_scores_html = ""
+    if sub_scores:
+        sub_scores_list = []
+        for k, v in sub_scores.items():
+            score_html = f'<div class="score-item">{k}: <span style="color: {color}; font-weight: bold;">{round(v, 1)}/10</span></div>'
+            sub_scores_list.append(score_html)
+        
+        sub_scores_html = f"""
+            <div style="margin-top: 20px; text-align: center;">
+                <div style="font-size: 20px; margin-bottom: 15px; font-weight: bold;">细项评分</div>
+                <div style="display: flex; flex-direction: column; gap: 10px; align-items: center;">
+                    {''.join(sub_scores_list)}
+                </div>
+            </div>
+        """
+    
     # 主评分区域
     st.markdown(f"""
         <div style="background-color: #f0f2f6; padding: 20px; border-radius: 10px; margin-bottom: 20px;">
@@ -64,28 +86,14 @@ def display_score(score: float, category: str, sub_scores: dict = None):
                 {category}评分
             </div>
             <div style="font-size: 72px; text-align: center; color: {color}; font-weight: bold; margin: 20px 0;">
-                {score}/10
+                {score_info}
             </div>
             <div style="text-align: center; font-size: 24px; margin: 20px 0;">
                 {feedback}
             </div>
+            {sub_scores_html}
         </div>
     """, unsafe_allow_html=True)
-
-    # 如果有细项评分，单独显示
-    if sub_scores:
-        st.markdown("<div style='text-align: center; font-size: 20px; font-weight: bold; margin: 20px 0;'>细项评分</div>", unsafe_allow_html=True)
-        
-        # 使用 columns 来布局细项评分
-        cols = st.columns(len(sub_scores))
-        for col, (name, sub_score) in zip(cols, sub_scores.items()):
-            with col:
-                st.markdown(f"""
-                    <div style="background-color: white; padding: 10px; border-radius: 5px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); text-align: center;">
-                        <div style="font-size: 16px; margin-bottom: 5px;">{name}</div>
-                        <div style="font-size: 24px; color: {color}; font-weight: bold;">{round(sub_score, 1)}/10</div>
-                    </div>
-                """, unsafe_allow_html=True)
 
 def process_images(files):
     """处理上传的图片文件"""
@@ -105,15 +113,19 @@ def process_images(files):
             continue
     return processed_images
 
-def analyze_content(agent, prompt, images, analysis_type, show_result=True):
+def analyze_content(agent, prompt, images, analysis_type, strictness="正常", stability=0.7, show_result=True):
     """分析内容并返回结果"""
     try:
         response = agent.run(message=prompt, images=images)
         content = response.content
         
-        # 提取分数
+        # 提取原始分数
         score_match = re.search(r'SCORE:\s*(\d+\.?\d*)', content)
-        score = float(score_match.group(1)) if score_match else 5.0
+        raw_score = float(score_match.group(1)) if score_match else 5.0
+        
+        # 应用稳定性和严格度控制
+        stable_score = get_stable_score(raw_score, stability)
+        final_score = adjust_score_strictness(stable_score, strictness)
         
         # 提取总结
         summary_match = re.search(r'SUMMARY:(.*?)DETAILS:', content, re.DOTALL)
@@ -132,7 +144,8 @@ def analyze_content(agent, prompt, images, analysis_type, show_result=True):
             st.markdown(details)
         
         return {
-            'score': score,
+            'score': final_score,
+            'raw_score': raw_score,
             'summary': summary,
             'details': details
         }
@@ -210,78 +223,159 @@ def initialize_agents(api_key: str) -> tuple[Agent, Agent, Agent]:
         st.error(f"初始化代理时出错: {str(e)}")
         return None, None, None
 
-def get_prompts(specific_elements, context):
+def get_stable_score(raw_score: float, stability_factor: float) -> float:
+    """
+    获取稳定性控制后的评分
+    
+    Args:
+        raw_score: 原始评分
+        stability_factor: 稳定性因子(0-1)，越大表示越稳定
+    """
+    base_score = 6.0
+    if stability_factor < 0 or stability_factor > 1:
+        raise ValueError("稳定性因子必须在0到1之间")
+        
+    score_diff = raw_score - base_score
+    adjusted_diff = score_diff * stability_factor
+    final_score = base_score + adjusted_diff
+    
+    return round(final_score, 1)
+
+def adjust_score_strictness(score: float, strictness: str) -> float:
+    """
+    调整评分的严格程度
+    
+    Args:
+        score: 原始评分
+        strictness: 严格程度("宽松", "正常", "严格")
+    """
+    strictness_factors = {
+        "宽松": 0.8,
+        "正常": 1.0,
+        "严格": 1.2
+    }
+    factor = strictness_factors[strictness]
+    adjusted = 10 - (10 - score) * factor
+    return max(0, min(10, round(adjusted, 1)))
+
+def get_prompts(specific_elements, context, strictness="正常"):
     """获取分析提示语"""
+    strictness_guide = {
+        "宽��": "在评分时更多关注设计的潜力和积极方面，对缺陷保持包容态度。",
+        "正常": "保持平衡的评分标准，同时考虑优点和不足。",
+        "严格": "采用更严格的评分标准，重点关注需要改进的地方。"
+    }
+    
+    scoring_guide = """
+    评分指导原则：
+    1. 基准参考：
+       - 6分代表行业平均水平
+       - 7-8分代表优秀水平
+       - 9分以上需要特别出色
+       - 5分以下表示需要重大改进
+    
+    2. 评分步骤：
+       a) 先判断是否达到基准水平(6分)
+       b) 根据优点加分(最多+2分)
+       c) 根据缺点减分(最多-2分)
+       d) 特殊情况才给出极端分数
+    """
+    
     vision_prompt = f"""
-    Analyze these designs focusing on: {', '.join(specific_elements)}
-    Additional context: {context}
-
-    Please provide your analysis in the following format:
-    1. Score (0-10) based on visual design principles
-    2. Brief summary and key suggestions (2-3 sentences)
-    3. Detailed analysis with the following aspects:
-       - Design elements and patterns
-       - Color schemes and typography
-       - Layout and visual hierarchy
-       - Brand consistency
-
-    Please format your response with clear headers and bullet points.
-    Focus on concrete observations and actionable insights.
-    Please provide your analysis in Chinese (Simplified Chinese).
-
-    Response format:
-    SCORE: [number]
-    SUMMARY: [brief summary and suggestions]
-    DETAILS: [detailed analysis]
+    分析这些设计，重点关注: {', '.join(specific_elements)}
+    补充上下文: {context}
+    
+    {scoring_guide}
+    评分标准: {strictness_guide[strictness]}
+    
+    请按以下格式提供分析：
+    1. 评分 (0-10)
+    2. 简要总结和主要建议 (2-3句话)
+    3. 详细分析以下方面：
+       - 设计元素和模式
+       - 配色方案和字体
+       - 布局和视觉层次
+       - 品牌一致性
+    
+    请使用清晰的标题和要点格式。
+    
+    输出格式：
+    SCORE: [分数]
+    SUMMARY: [简要总结和建议]
+    DETAILS: [详细分析]
     """
 
     ux_prompt = f"""
-    Analyze these designs focusing on: {', '.join(specific_elements)}
-    Additional context: {context}
-
-    Please provide your analysis in the following format:
-    1. Score (0-10) based on user experience principles
-    2. Brief summary and key suggestions (2-3 sentences)
-    3. Detailed analysis with the following aspects:
-       - User flows and navigation
-       - Interaction patterns
-       - Accessibility and usability
-       - Areas for improvement
-
-    Please format your response with clear headers and bullet points.
-    Focus on concrete observations and actionable improvements.
-    Please provide your analysis in Chinese (Simplified Chinese).
-
-    Response format:
-    SCORE: [number]
-    SUMMARY: [brief summary and suggestions]
-    DETAILS: [detailed analysis]
+    分析这些设计，重点关注: {', '.join(specific_elements)}
+    补充上下文: {context}
+    
+    {scoring_guide}
+    评分标准: {strictness_guide[strictness]}
+    
+    请按以下格式提供分析：
+    1. 评分 (0-10)
+    2. 简要总结和主要建议 (2-3句话)
+    3. 详细分析以下方面：
+       - 用户流程和导航
+       - 交互模式
+       - 可访问性和可用性
+       - 改进空间
+    
+    请使用清晰的标题和要点格式。
+    
+    输出格式：
+    SCORE: [分数]
+    SUMMARY: [简要总结和建议]
+    DETAILS: [详细分析]
     """
 
     market_prompt = f"""
-    Analyze market positioning and trends based on these designs.
-    Context: {context}
-
-    Please provide your analysis in the following format:
-    1. Score (0-10) based on market competitiveness
-    2. Brief summary and key suggestions (2-3 sentences)
-    3. Detailed analysis with the following aspects:
-       - Market positioning
-       - Competitive advantages
-       - Industry trends
-       - Growth opportunities
-
-    Please format your response with clear headers and bullet points.
-    Focus on concrete market insights and actionable recommendations.
-    Please provide your analysis in Chinese (Simplified Chinese).
-
-    Response format:
-    SCORE: [number]
-    SUMMARY: [brief summary and suggestions]
-    DETAILS: [detailed analysis]
+    分析这些设计的市场定位和趋势。
+    补充上下文: {context}
+    
+    {scoring_guide}
+    评分标准: {strictness_guide[strictness]}
+    
+    请按以下格式提供分析：
+    1. 评分 (0-10)
+    2. 简要总结和主要建议 (2-3句话)
+    3. 详细分析以下方面：
+       - 市场定位
+       - 竞争优势
+       - 行业趋势
+       - 增长机会
+    
+    请使用清晰的标题和要点格式。
+    
+    输出格式：
+    SCORE: [分数]
+    SUMMARY: [简要总结和建议]
+    DETAILS: [详细分析]
     """
 
     return vision_prompt, ux_prompt, market_prompt
+
+def show_analysis_config():
+    """显示分析配置选项"""
+    with st.expander("🎯 高级评分配置", expanded=False):
+        col1, col2 = st.columns(2)
+        with col1:
+            strictness = st.select_slider(
+                "评分严格度",
+                options=["宽松", "正常", "严格"],
+                value="正常",
+                help="控制AI评分的严格程度"
+            )
+        with col2:
+            stability = st.slider(
+                "评分稳定性",
+                min_value=0.0,
+                max_value=1.0,
+                value=0.7,
+                step=0.1,
+                help="控制评分的波动范围，越大越稳定"
+            )
+    return strictness, stability
 
 def main():
     # 检查是否已有 API key
@@ -378,6 +472,7 @@ def main():
 
             # 分析配置
             st.header("🎯 分析配置")
+            strictness, stability = show_analysis_config()
 
             analysis_types = st.multiselect(
                 "选择分析类型",
@@ -422,7 +517,7 @@ def main():
                         if "视觉设计" in analysis_types:
                             with st.spinner("正在分析视觉设计..."):
                                 results = analyze_content(
-                                    vision_agent, vision_prompt, all_images, "视觉设计", show_result=False
+                                    vision_agent, vision_prompt, all_images, "视觉设计", strictness, stability, show_result=False
                                 )
                                 scores['视觉设计'] = results['score']
                                 analysis_results['视觉设计'] = results
@@ -430,7 +525,7 @@ def main():
                         if "用户体验" in analysis_types:
                             with st.spinner("正在分析用户体验..."):
                                 results = analyze_content(
-                                    ux_agent, ux_prompt, all_images, "用户体验", show_result=False
+                                    ux_agent, ux_prompt, all_images, "用户体验", strictness, stability, show_result=False
                                 )
                                 scores['用户体验'] = results['score']
                                 analysis_results['用户体验'] = results
@@ -438,7 +533,7 @@ def main():
                         if "市场分析" in analysis_types:
                             with st.spinner("正在进行市场分析..."):
                                 results = analyze_content(
-                                    market_agent, market_prompt, all_images, "市场竞争力", show_result=False
+                                    market_agent, market_prompt, all_images, "市场竞争力", strictness, stability, show_result=False
                                 )
                                 scores['市场分析'] = results['score']
                                 analysis_results['市场分析'] = results
