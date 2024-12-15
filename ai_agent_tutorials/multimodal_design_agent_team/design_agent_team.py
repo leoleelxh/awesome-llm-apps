@@ -101,8 +101,15 @@ if st.session_state.api_key_input:
             
             if design_files:
                 for file in design_files:
-                    image = Image.open(file)
-                    st.image(image, caption=file.name, use_container_width=True)
+                    try:
+                        image = Image.open(file)
+                        st.image(
+                            image, 
+                            caption=file.name, 
+                            use_column_width=True
+                        )
+                    except Exception as e:
+                        st.error(f"无法打开图片 {file.name}: {str(e)}")
 
         with col2:
             competitor_files = st.file_uploader(
@@ -114,8 +121,15 @@ if st.session_state.api_key_input:
             
             if competitor_files:
                 for file in competitor_files:
-                    image = Image.open(file)
-                    st.image(image, caption=f"Competitor: {file.name}", use_container_width=True)
+                    try:
+                        image = Image.open(file)
+                        st.image(
+                            image, 
+                            caption=f"Competitor: {file.name}", 
+                            use_column_width=True
+                        )
+                    except Exception as e:
+                        st.error(f"无法打开图片 {file.name}: {str(e)}")
 
         # Analysis Configuration
         st.header("🎯 Analysis Configuration")

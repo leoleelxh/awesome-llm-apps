@@ -1,6 +1,7 @@
 google-generativeai==0.8.3
-streamlit==1.30.0
+streamlit==1.24.0
 phidata==2.7.2
-Pillow==11.0.0
+Pillow>=7.1.0,<11.0.0
 duckduckgo-search==6.3.7
-
+openai
+tornado>=6.0.3,<7.0.0
