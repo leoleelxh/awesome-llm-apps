@@ -5,3 +5,4 @@ Pillow>=7.1.0,<11.0.0
 duckduckgo-search==6.3.7
 openai
 tornado>=6.0.3,<7.0.0
+python-dotenv==1.0.0
